@@ -1,0 +1,17 @@
+# ~/.ssh/config on the ADMIN laptop (VPN profile "admin" must be up).
+# vpn-gw is reached over the VPN address; gitlab is reached THROUGH vpn-gw with ProxyJump.
+
+Host vpn-gw
+    HostName 10.99.0.1
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+
+Host gitlab
+    HostName 10.20.2.10
+    User ubuntu
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes
+    ProxyJump vpn-gw
+    # Prometheus listens on 127.0.0.1:9090 ON gitlab; this makes it appear on localhost:9090 on the laptop.
+    LocalForward 9090 127.0.0.1:9090

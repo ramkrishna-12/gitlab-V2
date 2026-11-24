@@ -1,0 +1,10 @@
+[Unit]
+Description=GitLab backup and off-box copy
+After=network-online.target gitlab-runsvdir.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/gitlab-backup.sh
+Nice=10
+IOSchedulingClass=idle

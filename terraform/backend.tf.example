@@ -1,0 +1,12 @@
+# Local use: leave Terraform on its default local state (nothing to do).
+# CI uses an S3 backend injected at run time by .github/workflows/terraform-deploy.yml.
+# To use the same remote state from your laptop, copy this to backend_override.tf (git-ignored).
+terraform {
+  backend "s3" {
+    bucket       = "<YOUR_STATE_BUCKET>"
+    key          = "private-gitlab-lab/terraform.tfstate"
+    region       = "ap-south-1"
+    encrypt      = true
+    use_lockfile = true
+  }
+}

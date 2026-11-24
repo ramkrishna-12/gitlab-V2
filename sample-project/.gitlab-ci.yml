@@ -1,0 +1,83 @@
+# Stages: lint -> security -> test -> build -> deploy
+stages:
+  - lint
+  - security
+  - test
+  - build
+  - deploy
+
+default:
+  image: python:3.12-slim
+
+variables:
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+
+cache:
+  key: pip
+  paths:
+    - .cache/pip
+
+lint:
+  stage: lint
+  script:
+    - pip install flake8
+    - flake8 .
+
+# Secret scanning over the FULL git history (GIT_DEPTH 0), not just the latest commit.
+# Findings are redacted in the log. A finding fails the job and therefore the pipeline.
+# TODO before the review: pin the image to a specific version tag instead of :latest.
+secret-scan:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:latest
+    entrypoint: [""]
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    - gitleaks git --redact --verbose --report-format json --report-path gitleaks-report.json .
+  artifacts:
+    when: always
+    paths:
+      - gitleaks-report.json
+    expire_in: 1 week
+
+unit-test:
+  stage: test
+  script:
+    - pip install pytest
+    - pytest -q --junitxml=report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml
+
+build-package:
+  stage: build
+  script:
+    - pip install build
+    - python -m build
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 week
+
+# DEMO_API_TOKEN is masked AND protected: it exists only on protected refs (main) and GitLab
+# replaces it with [MASKED] in the job log, even when the script prints it on purpose.
+use-masked-variable:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - test -n "$DEMO_API_TOKEN"
+    - echo "token length = ${#DEMO_API_TOKEN}"
+    - echo "printing it on purpose -> $DEMO_API_TOKEN"
+
+# Counter-proof: on an unprotected branch the protected variable must be ABSENT.
+protected-variable-hidden-on-branches:
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH && $CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH
+  script:
+    - test -z "${DEMO_API_TOKEN:-}"
+    - echo "OK - protected variable is not exposed to this unprotected branch"

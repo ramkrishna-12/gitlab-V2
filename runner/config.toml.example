@@ -1,0 +1,16 @@
+# /etc/gitlab-runner/config.toml as produced by install-runner.sh -- token replaced by a placeholder.
+concurrent = 2
+check_interval = 0
+
+[[runners]]
+  name = "docker-runner-private"
+  url = "https://gitlab.company.internal"
+  token = "glrt-<RUNNER_AUTH_TOKEN_PLACEHOLDER>"
+  tls-ca-file = "/etc/gitlab/trusted-certs/lab-ca.crt"
+  executor = "docker"
+  [runners.docker]
+    image = "python:3.12-slim"
+    privileged = false
+    pull_policy = ["if-not-present"]
+    volumes = ["/cache"]
+    extra_hosts = ["gitlab.company.internal:10.20.2.10"]

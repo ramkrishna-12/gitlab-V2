@@ -1,0 +1,12 @@
+# Example only -- every value is a placeholder. The real file is produced by add-peer.sh
+# and gets the client's OWN private key pasted in. Real *.conf files are git-ignored.
+[Interface]
+PrivateKey = <CLIENT_PRIVATE_KEY>
+Address = 10.99.0.11/32
+
+[Peer]
+PublicKey = <VPN_GW_SERVER_PUBLIC_KEY>
+Endpoint = <VPN_GW_PUBLIC_IP>:51820
+# Split tunnel: only the private GitLab subnet goes through the VPN.
+AllowedIPs = 10.20.2.0/24
+PersistentKeepalive = 25

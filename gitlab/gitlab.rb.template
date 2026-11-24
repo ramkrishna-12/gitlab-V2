@@ -1,0 +1,23 @@
+# /etc/gitlab/gitlab.rb -- only the lines we change. __FQDN__ is substituted by install-gitlab.sh.
+# No passwords or tokens in here (the root password comes from an environment variable at install time).
+
+external_url 'https://__FQDN__'
+
+# Internal CA certificate, so Let's Encrypt must be off (it is on by default for https URLs).
+letsencrypt['enable'] = false
+nginx['ssl_certificate']     = "/etc/gitlab/ssl/__FQDN__.crt"
+nginx['ssl_certificate_key'] = "/etc/gitlab/ssl/__FQDN__.key"
+nginx['redirect_http_to_https'] = true
+nginx['ssl_protocols'] = "TLSv1.2 TLSv1.3"
+
+# Backups (Part 6). Local copies are kept 3 days; the off-box copy lives in S3.
+gitlab_rails['backup_path'] = '/var/opt/gitlab/backups'
+gitlab_rails['backup_keep_time'] = 259200
+
+# Part 4: the bundled Prometheus, deliberately reachable from localhost ONLY.
+prometheus['listen_address'] = 'localhost:9090'
+
+# Memory tuning for a 4 GB host (plus 2 GB swap, created by install-gitlab.sh).
+puma['worker_processes'] = 0
+sidekiq['max_concurrency'] = 10
+postgresql['shared_buffers'] = "256MB"

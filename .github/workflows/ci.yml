@@ -1,0 +1,110 @@
+# CI: runs on every push to main and every pull request. No cloud credentials, no secrets.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: the token can only read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck (warnings and errors fail the build)
+        run: git ls-files '*.sh' | xargs shellcheck -x -S warning
+
+  terraform:
+    name: terraform fmt + validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      # variables.tf defaults to ~/.ssh/id_ed25519.pub and validate evaluates file(); a throw-away key satisfies it.
+      - name: Throw-away SSH key (never used for anything real)
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff
+      - name: terraform init (no backend, no credentials)
+        run: terraform init -backend=false -input=false
+      - name: terraform validate
+        run: terraform validate
+
+  iac-scan:
+    name: terraform security scan (trivy)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # HIGH and CRITICAL findings fail the build. Accepted risks are listed WITH reasons in .trivyignore.
+      - name: trivy config scan
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src aquasec/trivy:latest \
+            config --severity HIGH,CRITICAL --exit-code 1 --ignorefile /src/.trivyignore terraform
+
+  secrets:
+    name: secret scan (gitleaks, full history)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # scan every commit, not just the latest
+      - name: gitleaks
+        run: |
+          docker run --rm -v "$PWD:/repo" --entrypoint sh zricethezav/gitleaks:latest -c \
+            'git config --global --add safe.directory /repo && gitleaks git /repo --redact --verbose'
+
+  sample-app:
+    name: sample app (lint, test, build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tools
+        run: pip install flake8 pytest build
+      - name: lint
+        run: flake8 sample-project
+      - name: test
+        run: pytest -q sample-project
+      - name: build
+        run: python -m build sample-project
+
+  lint-yaml:
+    name: yaml + workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: yamllint
+        run: |
+          pip install yamllint
+          yamllint -c .yamllint .github sample-project/.gitlab-ci.yml
+      - name: actionlint (GitHub Actions syntax and expression checks)
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+
+  # One check to mark as "required" in branch protection instead of six.
+  ci-ok:
+    name: ci-ok
+    if: always()
+    needs: [shellcheck, terraform, iac-scan, secrets, sample-app, lint-yaml]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
