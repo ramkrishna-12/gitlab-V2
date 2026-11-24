@@ -19,7 +19,7 @@ jobs:
     name: shellcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck (warnings and errors fail the build)
         run: git ls-files '*.sh' | xargs shellcheck -x -S warning
 
@@ -30,7 +30,7 @@ jobs:
       run:
         working-directory: terraform
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
@@ -50,7 +50,7 @@ jobs:
     name: terraform security scan (trivy)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # HIGH and CRITICAL findings fail the build. Accepted risks are listed WITH reasons in .trivyignore.
       - name: trivy config scan
         run: |
@@ -61,7 +61,7 @@ jobs:
     name: secret scan (gitleaks, full history)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0   # scan every commit, not just the latest
       - name: gitleaks
@@ -73,7 +73,7 @@ jobs:
     name: sample app (lint, test, build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -90,7 +90,7 @@ jobs:
     name: yaml + workflow lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: yamllint
         run: |
           pip install yamllint

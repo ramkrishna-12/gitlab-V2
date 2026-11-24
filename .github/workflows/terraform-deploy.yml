@@ -45,7 +45,7 @@ jobs:
     env:
       ACTION: ${{ inputs.action || 'plan' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"   # S3 native state locking needs >= 1.10
@@ -120,7 +120,7 @@ jobs:
         shell: bash
         working-directory: terraform
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"
