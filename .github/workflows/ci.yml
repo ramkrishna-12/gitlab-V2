@@ -31,7 +31,7 @@ jobs:
         working-directory: terraform
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
       # variables.tf defaults to ~/.ssh/id_ed25519.pub and validate evaluates file(); a throw-away key satisfies it.
