@@ -1,0 +1,17 @@
+# Accepted findings for terraform/. Every line needs a reason a reviewer can challenge.
+
+# AVD-AWS-0107: security group allows ingress from 0.0.0.0/0.
+# Intentional: UDP 51820 is the WireGuard entry point, the ONLY thing exposed to the internet.
+AVD-AWS-0107
+
+# AVD-AWS-0104: security group allows egress to 0.0.0.0/0.
+# vpn-gw must reach the internet (it is the NAT for the private subnet); gitlab egress is limited to ports 80/443.
+AVD-AWS-0104
+
+# AVD-AWS-0009: instance gets a public IP at launch.
+# Intentional: vpn-gw is the public entry point. gitlab has none (associate_public_ip_address = false).
+AVD-AWS-0009
+
+# AVD-AWS-0132: S3 bucket not encrypted with a customer-managed KMS key.
+# Backups use SSE-S3 (AES-256) and the config archive is additionally encrypted client-side. Lab scope.
+AVD-AWS-0132

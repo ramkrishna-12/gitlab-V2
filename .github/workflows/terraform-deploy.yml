@@ -1,0 +1,165 @@
+# CD for the infrastructure.
+#   pull_request     -> terraform PLAN only (read-only AWS role), shown in the run summary
+#   workflow_dispatch -> plan | apply | destroy; apply/destroy WAIT for a human approval (environment "production")
+# Skipped (not failed) until the repository variables in docs/github-actions.md exist.
+name: terraform-deploy
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+      - "vpn/**"
+      - ".github/workflows/terraform-deploy.yml"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do with the infrastructure
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  contents: read
+
+# One run at a time per state file; never cancel a run that may be mid-apply.
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-south-1
+  TF_IN_AUTOMATION: "true"
+
+jobs:
+  plan:
+    name: plan
+    if: ${{ vars.AWS_PLAN_ROLE_ARN != '' && vars.TF_STATE_BUCKET != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # lets this job request an OIDC token for AWS; no long-lived AWS keys exist anywhere
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      ACTION: ${{ inputs.action || 'plan' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"   # S3 native state locking needs >= 1.10
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-${{ github.run_id }}
+      - name: Admin SSH public key (public data, stored as a repo variable)
+        env:
+          ADMIN_SSH_PUBKEY: ${{ vars.ADMIN_SSH_PUBKEY }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$ADMIN_SSH_PUBKEY" > ~/.ssh/ci_admin.pub
+      - name: Remote state backend (S3, native locking)
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          cat > backend_override.tf <<EOF
+          terraform {
+            backend "s3" {
+              bucket       = "${TF_STATE_BUCKET}"
+              key          = "private-gitlab-lab/terraform.tfstate"
+              region       = "${AWS_REGION}"
+              encrypt      = true
+              use_lockfile = true
+            }
+          }
+          EOF
+      - name: terraform init
+        run: terraform init -input=false
+      - name: terraform plan
+        env:
+          BOOTSTRAP_SSH_CIDR: ${{ vars.BOOTSTRAP_SSH_CIDR }}
+        run: |
+          args=(-input=false -no-color -out=tfplan
+                -var "ssh_public_key_path=$HOME/.ssh/ci_admin.pub"
+                -var "bootstrap_ssh_cidr=${BOOTSTRAP_SSH_CIDR}")
+          if [[ $ACTION == destroy ]]; then args+=(-destroy); fi
+          terraform plan "${args[@]}" | tee plan.txt
+      - name: Show the plan in the run summary
+        if: always()
+        run: |
+          {
+            echo "## terraform ${ACTION}"
+            echo '```'
+            if [[ -f plan.txt ]]; then tail -n 250 plan.txt; else echo "no plan produced"; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Keep the plan for the apply job (1 day)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.action != 'plan' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          retention-days: 1
+
+  apply:
+    name: ${{ inputs.action }} (needs approval)
+    needs: plan
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.action != 'plan' }}
+    runs-on: ubuntu-latest
+    # The human gate: configure "Required reviewers" on this environment (docs/github-actions.md).
+    # The AWS apply role trusts ONLY tokens issued for this environment.
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.10"
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: gha-apply-${{ github.run_id }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform
+      - name: Remote state backend (S3, native locking)
+        env:
+          TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+        run: |
+          cat > backend_override.tf <<EOF
+          terraform {
+            backend "s3" {
+              bucket       = "${TF_STATE_BUCKET}"
+              key          = "private-gitlab-lab/terraform.tfstate"
+              region       = "${AWS_REGION}"
+              encrypt      = true
+              use_lockfile = true
+            }
+          }
+          EOF
+      - name: terraform init
+        run: terraform init -input=false
+      # Applies exactly the plan that was reviewed in the plan job, nothing newer.
+      - name: terraform apply (the reviewed plan)
+        run: terraform apply -input=false -no-color tfplan
+      - name: Outputs
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          {
+            echo "## terraform outputs"
+            echo '```'
+            terraform output -no-color
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

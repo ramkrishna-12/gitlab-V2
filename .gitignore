@@ -1,0 +1,21 @@
+# Terraform state and local overrides -- state can contain sensitive values
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+crash.log
+
+# WireGuard material -- never commit real keys or real client configs
+*.key
+*.pub
+vpn/client/*.conf
+!vpn/client/client.conf.example
+
+# PKI: the CA private key must never be committed
+pki/
+
+# Terraform backend override (written by CI, or copied by hand from backend.tf.example)
+backend_override.tf
+tfplan
+plan.txt
