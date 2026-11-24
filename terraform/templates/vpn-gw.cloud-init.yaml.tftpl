@@ -1,0 +1,36 @@
+#cloud-config
+# First-boot configuration for vpn-gw. Rendered by Terraform (see compute.tf).
+package_update: true
+packages:
+  - wireguard
+  - iptables-persistent
+  - netfilter-persistent
+
+write_files:
+  - path: /etc/gw/gw.env
+    permissions: "0644"
+    encoding: gz+b64
+    content: ${gw_env}
+  - path: /usr/local/lib/gw-lib.sh
+    permissions: "0644"
+    encoding: gz+b64
+    content: ${gw_lib}
+  - path: /usr/local/sbin/gw-firewall.sh
+    permissions: "0750"
+    encoding: gz+b64
+    content: ${gw_firewall}
+  - path: /usr/local/sbin/gw-bootstrap.sh
+    permissions: "0750"
+    encoding: gz+b64
+    content: ${gw_bootstrap}
+  - path: /usr/local/sbin/add-peer.sh
+    permissions: "0750"
+    encoding: gz+b64
+    content: ${gw_add_peer}
+  - path: /usr/local/sbin/revoke-peer.sh
+    permissions: "0750"
+    encoding: gz+b64
+    content: ${gw_revoke_peer}
+
+runcmd:
+  - [ /usr/local/sbin/gw-bootstrap.sh ]
